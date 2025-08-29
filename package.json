@@ -19,9 +19,7 @@
     "react-is": "^19.1.1",
     "react-router-dom": "^6.8.1",
     "recharts": "^3.1.2",
-    "redux": "^5.0.1"
-  },
-  "devDependencies": {
+    "redux": "^5.0.1",
     "@types/react": "^18.0.27",
     "@types/react-dom": "^18.0.10",
     "@vitejs/plugin-react": "^3.1.0",
