@@ -1,0 +1,12 @@
+{
+  "name": "sales-kpi-optimized",
+  "version": "1.0.0",
+  "description": "Sales KPI Dashboard with Backend and Frontend",
+  "scripts": {
+    "build": "echo 'Build handled by Render build command'",
+    "start": "cd backend && node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
