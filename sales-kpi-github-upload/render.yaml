@@ -1,0 +1,27 @@
+services:
+  # バックエンドサービス
+  - type: web
+    name: sales-kpi-backend
+    runtime: node
+    repo: https://github.com/YOUR_USERNAME/YOUR_REPO_NAME
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && node server.js
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5001
+
+  # フロントエンドサービス  
+  - type: web
+    name: sales-kpi-frontend
+    runtime: static
+    repo: https://github.com/YOUR_USERNAME/YOUR_REPO_NAME
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
