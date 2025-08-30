@@ -1,14 +1,41 @@
+databases:
+  # PostgreSQL database for production
+  - name: sales-kpi-db
+    databaseName: sales_kpi_db
+    user: sales_kpi_user
+    plan: free
+
 services:
-  # 統合サービス（フロントエンド + バックエンド）
+  # バックエンドサービス
   - type: web
-    name: sales-kpi-app
+    name: sales-kpi-backend
     runtime: node
-    buildCommand: cd frontend && npm install && npm run build && cd ../backend && npm install
+    repo: https://github.com/YOUR_USERNAME/YOUR_REPO_NAME
+    buildCommand: cd backend && npm install
     startCommand: cd backend && node server.js
     envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sales-kpi-db
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true
       - key: NODE_ENV
         value: production
-      - key: DISCORD_WEBHOOK_URL
-        sync: false
+      - key: PORT
+        value: 5001
+
+  # フロントエンドサービス  
+  - type: web
+    name: sales-kpi-frontend
+    runtime: static
+    repo: https://github.com/YOUR_USERNAME/YOUR_REPO_NAME
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://sales-kpi-backend.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
