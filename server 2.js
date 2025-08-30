@@ -5,8 +5,6 @@ const jwt = require('jsonwebtoken');
 const sqlite3 = require('sqlite3').verbose();
 const cron = require('node-cron');
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
 require('dotenv').config();
 
 // Discord integration
@@ -108,13 +106,21 @@ db.serialize(() => {
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
+  
+  console.log('Auth check - Header:', authHeader);
+  console.log('Auth check - Token:', token ? token.substring(0, 20) + '...' : 'NO TOKEN');
 
   if (!token) {
-    return res.sendStatus(401);
+    console.log('Auth failed: No token provided');
+    return res.status(401).json({ error: 'No token provided' });
   }
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.sendStatus(403);
+    if (err) {
+      console.log('Auth failed: Invalid token -', err.message);
+      return res.status(403).json({ error: 'Invalid token: ' + err.message });
+    }
+    console.log('Auth success - User:', user);
     req.user = user;
     next();
   });
@@ -139,7 +145,7 @@ app.post('/api/auth/register', async (req, res) => {
           return res.status(500).json({ error: '登録に失敗しました' });
         }
         
-        const token = jwt.sign({ id: this.lastID, email }, JWT_SECRET, { expiresIn: '30d' });
+        const token = jwt.sign({ id: this.lastID, email }, JWT_SECRET);
         res.json({ token, user: { id: this.lastID, email, name } });
       }
     );
@@ -162,27 +168,11 @@ app.post('/api/auth/login', (req, res) => {
       return res.status(401).json({ error: 'メールアドレスまたはパスワードが正しくありません' });
     }
     
-    // トークンを30日間有効に設定
-    const token = jwt.sign(
-      { id: user.id, email: user.email }, 
-      JWT_SECRET,
-      { expiresIn: '30d' }
-    );
-    
-    // データ件数を取得
-    db.get(
-      'SELECT COUNT(*) as count FROM daily_kpi WHERE user_id = ?',
-      [user.id],
-      (err, result) => {
-        const dataCount = result ? result.count : 0;
-        
-        res.json({ 
-          token, 
-          user: { id: user.id, email: user.email, name: user.name },
-          dataCount: dataCount
-        });
-      }
-    );
+    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET);
+    res.json({ 
+      token, 
+      user: { id: user.id, email: user.email, name: user.name } 
+    });
   });
 });
 
@@ -190,6 +180,7 @@ app.post('/api/auth/login', (req, res) => {
 app.post('/api/kpi-goals', authenticateToken, (req, res) => {
   const userId = req.user.id;
   const goals = req.body;
+  console.log('Saving goals for user:', userId, 'Week:', goals.week_start);
   
   db.run(
     `INSERT INTO kpi_goals (
@@ -249,6 +240,7 @@ app.get('/api/kpi-goals/current', authenticateToken, (req, res) => {
 app.post('/api/daily-kpi', authenticateToken, (req, res) => {
   const userId = req.user.id;
   const kpi = req.body;
+  console.log('Saving daily KPI for user:', userId, 'Date:', kpi.date);
   
   db.run(
     `INSERT OR REPLACE INTO daily_kpi (
@@ -382,43 +374,6 @@ cron.schedule('0 17 * * 5', () => {
   sendDiscordNotification('📈 週次レビューの時間です！今週の振り返りを行いましょう。\nhttps://your-app-url.com/weekly-review');
 });
 
-// Daily automatic backup at midnight
-cron.schedule('0 0 * * *', () => {
-  const date = new Date().toISOString().split('T')[0];
-  const backupPath = path.join(__dirname, 'backups', `kpi_enhanced_${date}.db`);
-  
-  // Create backups directory if it doesn't exist
-  if (!fs.existsSync(path.join(__dirname, 'backups'))) {
-    fs.mkdirSync(path.join(__dirname, 'backups'));
-  }
-  
-  // Copy database file
-  fs.copyFile(dbPath, backupPath, (err) => {
-    if (err) {
-      console.error('Backup failed:', err);
-    } else {
-      console.log(`Backup created: ${backupPath}`);
-      
-      // Delete backups older than 30 days
-      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
-      fs.readdir(path.join(__dirname, 'backups'), (err, files) => {
-        if (!err) {
-          files.forEach(file => {
-            const filePath = path.join(__dirname, 'backups', file);
-            fs.stat(filePath, (err, stats) => {
-              if (!err && stats.mtime.getTime() < thirtyDaysAgo) {
-                fs.unlink(filePath, () => {
-                  console.log(`Old backup deleted: ${file}`);
-                });
-              }
-            });
-          });
-        }
-      });
-    }
-  });
-});
-
 
 // Settings endpoints
 app.get('/api/settings', authenticateToken, (req, res) => {
@@ -538,6 +493,8 @@ app.get('/api/export/csv', authenticateToken, (req, res) => {
   const userId = req.user.id;
   const { start, end } = req.query;
   
+  console.log('Exporting CSV for user:', userId, 'Period:', start, '-', end);
+  
   db.all(
     `SELECT * FROM daily_kpi 
      WHERE user_id = ? AND date >= ? AND date <= ?
@@ -594,6 +551,8 @@ app.get('/api/export/json', authenticateToken, (req, res) => {
   const userId = req.user.id;
   const { start, end } = req.query;
   
+  console.log('Exporting JSON for user:', userId, 'Period:', start, '-', end);
+  
   db.all(
     `SELECT * FROM daily_kpi 
      WHERE user_id = ? AND date >= ? AND date <= ?
@@ -606,129 +565,6 @@ app.get('/api/export/json', authenticateToken, (req, res) => {
       }
       
       res.json({ data: rows, period: { start, end } });
-    }
-  );
-});
-
-// Dashboard API endpoints
-app.get('/api/goals/progress/:weekStart', authenticateToken, (req, res) => {
-  const userId = req.user.id;
-  const { weekStart } = req.params;
-  
-  // Get current week goals
-  db.get(
-    `SELECT * FROM kpi_goals 
-     WHERE user_id = ? AND week_start = ?
-     ORDER BY created_at DESC LIMIT 1`,
-    [userId, weekStart],
-    (err, goals) => {
-      if (err) {
-        console.error('Error fetching goals:', err);
-        return res.status(500).json({ error: 'Failed to fetch goals' });
-      }
-      
-      // Calculate week end date (Sunday)
-      const weekStartDate = new Date(weekStart);
-      const weekEndDate = new Date(weekStartDate);
-      weekEndDate.setDate(weekEndDate.getDate() + 6);
-      const weekEnd = weekEndDate.toISOString().split('T')[0];
-      
-      // Get actual data for the week
-      db.all(
-        `SELECT * FROM daily_kpi 
-         WHERE user_id = ? AND date >= ? AND date <= ?`,
-        [userId, weekStart, weekEnd],
-        (err, dailyData) => {
-          if (err) {
-            console.error('Error fetching daily data:', err);
-            return res.status(500).json({ error: 'Failed to fetch daily data' });
-          }
-          
-          // Calculate actuals
-          const actuals = dailyData.reduce((acc, day) => ({
-            emails_manual: acc.emails_manual + (day.emails_sent_manual || 0),
-            emails_outsource: acc.emails_outsource + (day.emails_sent_outsource || 0),
-            replies: acc.replies + (day.replies_received || 0),
-            meetings: acc.meetings + (day.meetings_scheduled || 0),
-            deals: acc.deals + (day.deals_closed || 0),
-            projects: acc.projects + (day.projects_created || 0)
-          }), {
-            emails_manual: 0,
-            emails_outsource: 0,
-            replies: 0,
-            meetings: 0,
-            deals: 0,
-            projects: 0
-          });
-          
-          // Calculate progress percentages
-          const progress = {
-            emails_manual: goals && goals.emails_manual_target ? 
-              ((actuals.emails_manual / goals.emails_manual_target) * 100).toFixed(1) : '0',
-            emails_outsource: goals && goals.emails_outsource_target ? 
-              ((actuals.emails_outsource / goals.emails_outsource_target) * 100).toFixed(1) : '0',
-            replies: goals && goals.reply_target ? 
-              ((actuals.replies / goals.reply_target) * 100).toFixed(1) : '0',
-            meetings: goals && goals.meetings_target ? 
-              ((actuals.meetings / goals.meetings_target) * 100).toFixed(1) : '0',
-            deals: goals && goals.deals_target ? 
-              ((actuals.deals / goals.deals_target) * 100).toFixed(1) : '0',
-            projects: goals && goals.projects_target ? 
-              ((actuals.projects / goals.projects_target) * 100).toFixed(1) : '0'
-          };
-          
-          // Calculate days remaining in week (including today)
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          weekEndDate.setHours(23, 59, 59, 999);
-          const daysRemaining = Math.max(0, Math.ceil((weekEndDate - today) / (1000 * 60 * 60 * 24)));
-          
-          res.json({
-            goals: goals || {},
-            actuals,
-            progress,
-            daysRemaining
-          });
-        }
-      );
-    }
-  );
-});
-
-app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
-  const userId = req.user.id;
-  
-  // Get last 30 days of data
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - 30);
-  
-  const startStr = startDate.toISOString().split('T')[0];
-  const endStr = endDate.toISOString().split('T')[0];
-  
-  db.all(
-    `SELECT * FROM daily_kpi 
-     WHERE user_id = ? AND date >= ? AND date <= ?
-     ORDER BY date DESC`,
-    [userId, startStr, endStr],
-    (err, rows) => {
-      if (err) {
-        console.error('Error fetching stats:', err);
-        return res.status(500).json({ error: 'Failed to fetch stats' });
-      }
-      
-      // Transform data for dashboard
-      const dailyData = rows.map(row => ({
-        date: row.date,
-        emails: (row.emails_sent_manual || 0) + (row.emails_sent_outsource || 0),
-        valid_emails: (row.valid_emails_manual || 0) + (row.valid_emails_outsource || 0),
-        replies: row.replies_received || 0,
-        meetings: row.meetings_scheduled || 0,
-        deals: row.deals_closed || 0,
-        projects: row.projects_created || 0
-      }));
-      
-      res.json({ dailyData });
     }
   );
 });

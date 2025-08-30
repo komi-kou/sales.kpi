@@ -5,8 +5,6 @@ const jwt = require('jsonwebtoken');
 const sqlite3 = require('sqlite3').verbose();
 const cron = require('node-cron');
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
 require('dotenv').config();
 
 // Discord integration
@@ -139,7 +137,7 @@ app.post('/api/auth/register', async (req, res) => {
           return res.status(500).json({ error: '登録に失敗しました' });
         }
         
-        const token = jwt.sign({ id: this.lastID, email }, JWT_SECRET, { expiresIn: '30d' });
+        const token = jwt.sign({ id: this.lastID, email }, JWT_SECRET);
         res.json({ token, user: { id: this.lastID, email, name } });
       }
     );
@@ -162,27 +160,11 @@ app.post('/api/auth/login', (req, res) => {
       return res.status(401).json({ error: 'メールアドレスまたはパスワードが正しくありません' });
     }
     
-    // トークンを30日間有効に設定
-    const token = jwt.sign(
-      { id: user.id, email: user.email }, 
-      JWT_SECRET,
-      { expiresIn: '30d' }
-    );
-    
-    // データ件数を取得
-    db.get(
-      'SELECT COUNT(*) as count FROM daily_kpi WHERE user_id = ?',
-      [user.id],
-      (err, result) => {
-        const dataCount = result ? result.count : 0;
-        
-        res.json({ 
-          token, 
-          user: { id: user.id, email: user.email, name: user.name },
-          dataCount: dataCount
-        });
-      }
-    );
+    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET);
+    res.json({ 
+      token, 
+      user: { id: user.id, email: user.email, name: user.name } 
+    });
   });
 });
 
@@ -380,43 +362,6 @@ cron.schedule('0 18 * * *', () => {
 // Weekly summary on Friday at 5 PM
 cron.schedule('0 17 * * 5', () => {
   sendDiscordNotification('📈 週次レビューの時間です！今週の振り返りを行いましょう。\nhttps://your-app-url.com/weekly-review');
-});
-
-// Daily automatic backup at midnight
-cron.schedule('0 0 * * *', () => {
-  const date = new Date().toISOString().split('T')[0];
-  const backupPath = path.join(__dirname, 'backups', `kpi_enhanced_${date}.db`);
-  
-  // Create backups directory if it doesn't exist
-  if (!fs.existsSync(path.join(__dirname, 'backups'))) {
-    fs.mkdirSync(path.join(__dirname, 'backups'));
-  }
-  
-  // Copy database file
-  fs.copyFile(dbPath, backupPath, (err) => {
-    if (err) {
-      console.error('Backup failed:', err);
-    } else {
-      console.log(`Backup created: ${backupPath}`);
-      
-      // Delete backups older than 30 days
-      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
-      fs.readdir(path.join(__dirname, 'backups'), (err, files) => {
-        if (!err) {
-          files.forEach(file => {
-            const filePath = path.join(__dirname, 'backups', file);
-            fs.stat(filePath, (err, stats) => {
-              if (!err && stats.mtime.getTime() < thirtyDaysAgo) {
-                fs.unlink(filePath, () => {
-                  console.log(`Old backup deleted: ${file}`);
-                });
-              }
-            });
-          });
-        }
-      });
-    }
-  });
 });
 
 
@@ -677,10 +622,8 @@ app.get('/api/goals/progress/:weekStart', authenticateToken, (req, res) => {
               ((actuals.projects / goals.projects_target) * 100).toFixed(1) : '0'
           };
           
-          // Calculate days remaining in week (including today)
+          // Calculate days remaining in week
           const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          weekEndDate.setHours(23, 59, 59, 999);
           const daysRemaining = Math.max(0, Math.ceil((weekEndDate - today) / (1000 * 60 * 60 * 24)));
           
           res.json({

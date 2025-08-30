@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <h1>Sales KPI Tracker - API Test</h1>
+    
+    <div>
+        <h2>1. Login</h2>
+        <button onclick="testLogin()">Test Login</button>
+        <pre id="loginResult"></pre>
+    </div>
+    
+    <div>
+        <h2>2. Save Goals</h2>
+        <button onclick="testSaveGoals()">Test Save Goals</button>
+        <pre id="goalsResult"></pre>
+    </div>
+    
+    <div>
+        <h2>3. Save Daily KPI</h2>
+        <button onclick="testSaveDailyKPI()">Test Save Daily KPI</button>
+        <pre id="dailyResult"></pre>
+    </div>
+    
+    <div>
+        <h2>4. Export CSV</h2>
+        <button onclick="testExport()">Test Export</button>
+        <pre id="exportResult"></pre>
+    </div>
+    
+    <script>
+        let authToken = '';
+        
+        async function testLogin() {
+            try {
+                const response = await fetch('http://localhost:5001/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'test@example.com',
+                        password: 'password123'
+                    })
+                });
+                
+                const data = await response.json();
+                authToken = data.token;
+                document.getElementById('loginResult').textContent = 'Success: ' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('loginResult').textContent = 'Error: ' + error;
+            }
+        }
+        
+        async function testSaveGoals() {
+            if (!authToken) {
+                alert('Please login first');
+                return;
+            }
+            
+            try {
+                const response = await fetch('http://localhost:5001/api/kpi-goals', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        week_start: '2025-08-26',
+                        emails_manual_target: 150,
+                        emails_outsource_target: 2250,
+                        valid_emails_manual_target: 150,
+                        valid_emails_outsource_target: 1350,
+                        reply_target: 22,
+                        reply_rate_target: 1.5,
+                        meetings_target: 8,
+                        meeting_rate_target: 36,
+                        deals_target: 6,
+                        deal_rate_target: 75,
+                        projects_target: 2,
+                        project_rate_target: 25,
+                        ongoing_projects_target: 2,
+                        slide_views_target: 25,
+                        slide_view_rate_target: 15,
+                        video_views_target: 25,
+                        video_view_rate_target: 15
+                    })
+                });
+                
+                const data = await response.json();
+                document.getElementById('goalsResult').textContent = 'Success: ' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('goalsResult').textContent = 'Error: ' + error;
+            }
+        }
+        
+        async function testSaveDailyKPI() {
+            if (!authToken) {
+                alert('Please login first');
+                return;
+            }
+            
+            try {
+                const response = await fetch('http://localhost:5001/api/daily-kpi', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        date: '2025-08-28',
+                        emails_sent_manual: 30,
+                        emails_sent_outsource: 450,
+                        valid_emails_manual: 30,
+                        valid_emails_outsource: 270,
+                        replies_received: 5,
+                        meetings_scheduled: 2,
+                        deals_closed: 1,
+                        projects_created: 1,
+                        ongoing_projects: 2,
+                        slide_views: 3,
+                        video_views: 2,
+                        notes: 'Test from HTML'
+                    })
+                });
+                
+                const data = await response.json();
+                document.getElementById('dailyResult').textContent = 'Success: ' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('dailyResult').textContent = 'Error: ' + error;
+            }
+        }
+        
+        async function testExport() {
+            if (!authToken) {
+                alert('Please login first');
+                return;
+            }
+            
+            try {
+                const response = await fetch('http://localhost:5001/api/export/csv?start=2025-08-01&end=2025-08-31', {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                document.getElementById('exportResult').textContent = 'Success: ' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('exportResult').textContent = 'Error: ' + error;
+            }
+        }
+    </script>
+</body>
+</html>
